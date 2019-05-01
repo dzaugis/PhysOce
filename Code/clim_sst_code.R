@@ -13,7 +13,7 @@ source(paste(code.path, "clim_sst_functions.R", sep = ""))
 # Load libraries
 library_check(c("tidyverse"))
 
-# Load in input file, providing the information for which climate models to access from ESGF-GFDL THREDDS server. The input file should be checked against the data catalog here: https://esgdata.gfdl.noaa.gov/thredds/catalog/esgcet/catalog.html. After navigating to the website, you can manually enter results for a given run of interest and then check the httpserver link -- the most sensitivite thing seems to be the version number. 
+# Load in input file, providing the information for which climate models to access from ESGF-GFDL THREDDS server. The input file should be checked against the data catalog here: https://esgdata.gfdl.noaa.gov/thredds/catalog/esgcet/catalog.html. After navigating to the website, you can manually enter results for a given run of interest and then check the httpserver link. Moving forward, we might want to look at how to filter all files based on more minimal user input (i.e., "rcp85", "tos"). For now though, this seems to be okay. 
 input.params<- read_csv(paste(input.path, "ClimatemodelParams.csv", sep = ""))
 
 # Generate THREDDS URLS by mapping the "make_climate_threddsURL.R" function to our input parameter file
