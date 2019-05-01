@@ -42,21 +42,20 @@ make360 <- function(lon) {
 
 fix_raster<- function(x, lons.use, lats.use, x.min.use, x.max.use, y.min.use, y.max.use) {
   ## Details
-  # This function helps orient the OISST rasters, which originally come in flipped/rotated.
+  # This function helps convert an array (x, y, z) into raster layers with the correct dimensions and orientation.
   
   # Args:
-  # x = 
-  # lons.use = 
-  # lats.use = 
-  # x.min.use = 
-  # x.max.use = 
-  # y.min.use = 
-  # y.max.use = 
+  # x = A matrix. As currently implemented, x is an individiaul time slice from an x, y, z array.
+  # lons.use = Longitudes, extracted using ncvar_get
+  # lats.use = Latitudes, extracted using ncvar_get
+  # x.min.use = Bounding box x minimum
+  # x.max.use = Bounding box x maximum
+  # y.min.use = Bounding box x minimum
+  # y.max.use = Bounding box x maximum
   
-  # Returns: Correctly oriented raster 
+  # Returns: Correctly oriented raster layer
   
   ## Start function
-  
   r.temp<- t(x)[ncol(x):1,]
   rast.out<- raster(r.temp, xmn = lons.use[x.min.use], xmx = lons.use[x.max.use], ymn = lats.use[y.min.use], ymx = lats.use[y.max.use])
   return(rast.out)

@@ -3,4 +3,4 @@ cmip5,GFDL-ESM2G,rcp85,mon,ocean,Omon,r1i1p1,v20110601,tos
 cmip5,GFDL-ESM2M,rcp85,mon,ocean,Omon,r1i1p1,v20110601,tos
 cmip5,GFDL-ESM2G,rcp60,mon,ocean,Omon,r1i1p1,v20110601,tos
 cmip5,GFDL-ESM2M,rcp60,mon,ocean,Omon,r1i1p1,v20110601,tos
-cmip6,GFDL-CM4,picontrol,mon,ocean,Omon,r1i1p1f1,v20190201,tos
+cmip6,GFDL-CM4,piControl,mon,ocean,Omon,r1i1p1f1,v20190201,tos
