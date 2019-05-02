@@ -404,13 +404,14 @@ env_data_extract<- function(data.set = "OISST", dates = NULL, box = c(-77, -60, 
 }
 
 # Env data time series plot function --------------------------------------
-env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-01"), regions = c("NELME", "GoM", "SNE-MAB"), out.dir = "/Volumes/Shared/Research/Mills Lab/SST/") {
+env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-01"), alt.trend = c("2004-01-01", "2018-12-31"), regions = c("NELME", "GoM", "SNE-MAB"), out.dir = "/Volumes/Shared/Research/Mills Lab/SST/") {
   ## Details
   # This function plots time series (for potentially different regions) and fits trend lines to evaluate warming rates
   
   # Args:
   # oisst.stack = Path to the raster OISST stack created by env_data_extract function
   # baseline = Start and end dates for the baseline period. Dates should be specified as dates = c("YYYY-MM-DD", "YYYY-MM-DD"). Defaults to 1982-2011.
+  # Alt trend = Start and end dates for an alternative trendline to add to the plot. Dates should be specified as alt.trend = c("YYYY-MM-DD", "YYYY-MM-DD").
   # regions = Character vector determining what regions should be analyzed. Can be any combination of "NELME", "GoM", "SNE-MAB"
   # out.dir = Path to output both SST flat csv files and time series plots 
   
@@ -418,14 +419,15 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
   
   ## Start function
   # Install libraries
-  library_check(c("tidyverse", "sf"))
+  library_check(c("tidyverse", "sf", "zoo", "forecast"))
   
   # Set arguments for debugging -- this will NOT run when you call the function. Though, you can run each line inside the {} and then you will have everything you need to walk through the rest of the function.
   if(FALSE){
-    oisst.stack = "/Volumes/Shared/Research/Mills Lab/SST/Raw Data/OISST.grd"
+    oisst.stack = "~/Dropbox/Andrew/Work/GMRI/Projects/AllData/OISST.grd"
     baseline = c("1982-01-01", "2011-01-01")
+    alt.trend = c("2004-01-01", "2018-12-31")
     regions = c("NELME")
-    out.dir<- "/Volumes/Shared/Research/Mills Lab/SST/"
+    out.dir<- "~/Dropbox/Andrew/Work/GMRI/Projects/AllData/"
   }
   
   # Read in OISST data
@@ -441,15 +443,13 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
                       "SNE-MAB" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/SNEandMAB.shp"))
     
     # Need to get climatology from the OISST data 
-    # Mask
-    #oisst.m<- mask(oisst.rts, mask.use)
     oisst.m<- oisst.rts
     
     # Baseline
     oisst.m.base<- oisst.m[[which(getZ(oisst.m) >= baseline[1] & getZ(oisst.m) <= baseline[2])]]
     oisst.m.base<- setZ(oisst.m.base, seq.Date(from = as.Date(baseline[1]), to = as.Date(baseline[2]), by = "day"))
     
-    dates.unique<- unique(format(getZ(oisst.m), "%m-%d"))
+    dates.unique<- unique(format(as.Date(getZ(oisst.m)), "%m-%d"))
     daily.means<- stack(lapply(seq(length(dates.unique)), function(x) calc(oisst.m.base[[which(format(getZ(oisst.m.base), "%m-%d") == dates.unique[x])]], fun = mean)))
     names(daily.means)<- dates.unique
     daily.sd<- stack(lapply(seq(length(dates.unique)), function(x) calc(oisst.m.base[[which(format(getZ(oisst.m.base), "%m-%d") == dates.unique[x])]], fun = sd)))
@@ -469,7 +469,7 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
       drop_na(SST)
     
     # Daily data
-    write_csv(daily.dat, file = paste(out.dir, regions[i], ".SSTDailyDegF.csv", sep = ""))
+    write_csv(daily.dat, path = paste(out.dir, regions[i], ".SSTDailyDegF.csv", sep = ""))
     
     # Baseline data
     clim.temps<- do.call("cbind", lapply(seq(1:nlayers(daily.means)), function(x) as.data.frame(daily.means[[x]], xy = TRUE)))
@@ -487,17 +487,17 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
       summarize(., Mean.SST = mean(SST))
     
     # Clim data
-    write.csv(clim.dat, file = paste("~/Desktop/", sub.regions[i], ".SSTDailyClimatologyDegF.csv", sep = ""))
+    write.csv(clim.dat, file = paste(out.dir, regions[i], ".SSTDailyClimatologyDegF.csv", sep = ""))
     
     # Alright, now substract each daily OISST from the daily climatology to get the anomaly
     anom.type<- "Non.standardized"
     daily.anoms<- switch(anom.type, 
-                         Standardized = stack(lapply(seq(1:nlayers(oisst.m)), function(x) (oisst.m[[x]] - daily.means[[match(format(getZ(oisst.m)[x], "%m-%d"), gsub("[.]", "-", gsub("X", "", names(daily.means))))]])/daily.sd[[match(format(getZ(oisst.m)[x], "%m-%d"), gsub("[.]", "-", gsub("X", "", names(daily.sd))))]])),
-                         Non.standardized = stack(lapply(seq(1:nlayers(oisst.m)), function(x) (oisst.m[[x]] - daily.means[[match(format(getZ(oisst.m)[x], "%m-%d"), gsub("[.]", "-", gsub("X", "", names(daily.means))))]]))))
+                         Standardized = stack(lapply(seq(1:nlayers(oisst.m)), function(x) (oisst.m[[x]] - daily.means[[match(format(as.Date(getZ(oisst.m)[x]), "%m-%d"), gsub("[.]", "-", gsub("X", "", names(daily.means))))]])/daily.sd[[match(format(as.Date(getZ(oisst.m)[x]), "%m-%d"), gsub("[.]", "-", gsub("X", "", names(daily.sd))))]])),
+                         Non.standardized = stack(lapply(seq(1:nlayers(oisst.m)), function(x) (oisst.m[[x]] - daily.means[[match(format(as.Date(getZ(oisst.m)[x]), "%m-%d"), gsub("[.]", "-", gsub("X", "", names(daily.means))))]]))))
     names(daily.anoms)<- getZ(oisst.m)
     
     # Save it
-    writeRaster(daily.anoms, filename = paste("~/Desktop/", sub.regions[i], ".grd", sep = ""), overwrite = TRUE)
+    writeRaster(daily.anoms, filename = paste(out.dir, regions[i], ".grd", sep = ""), overwrite = TRUE)
     
     # Getting the anomalies
     ts.wide.daily<- do.call("cbind", lapply(seq(1:nlayers(daily.anoms)), function(x) as.data.frame(daily.anoms[[x]], xy = TRUE)))
@@ -512,7 +512,7 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
       summarize_at(., "SST", mean, na.rm = T)
     
     # Save em
-    write.csv(ts.df.daily, paste("~/Desktop/", sub.regions[i], "Anomalies.csv", sep = ""))
+    write.csv(ts.df.daily, paste(out.dir, regions[i], "DailyAnomalies.csv", sep = ""))
     
     # Keep going for individual region...
     ts.df.dailymu<- ts.df.daily %>%
@@ -544,6 +544,10 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
     # Plots
     d15<- TRUE
     if(d15 == TRUE){
+      # Get current year, then plot all data before the current year
+      curr.year<- format(as.Date(Sys.time()), "%Y")
+      ts.end<- paste(as.numeric(curr.year)-1, "-12-31", sep = "")
+      
       # Full trend line
       sst.anom.lm.full<- lm(Mean.SST ~ Year.Model, data = ts.df.yearlymu)
       summary(sst.anom.lm.full)
@@ -551,11 +555,11 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
       
       # Fitted model formula
       my.formula.full<- paste("Mean.SST = ", signif(round(sst.anom.lm.full$coef[[1]], 3), 5), " + ", signif(round(sst.anom.lm.full$coef[[2]], 3), 5), "*Year", sep = "")
-      base.ts<- ggplot(data = subset(ts.df.dailymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2017-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = smoothed)) + 
+      base.ts<- ggplot(data = subset(ts.df.dailymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date(ts.end, format = "%Y-%m-%d")), aes(x = Plot.Date, y = smoothed)) + 
         geom_line(col = "#d9d9d9", lwd = 0.15) +
-        geom_point(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2017-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black") +
-        geom_line(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2017-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black", lwd = 0.25) +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2017-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#969696", size = 0.75, se = FALSE) +
+        geom_point(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date(ts.end, format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black") +
+        geom_line(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date(ts.end, format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black", lwd = 0.25) +
+        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date(ts.end, format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#969696", size = 0.75, se = FALSE) +
         ylim(c(-3, 4)) +
         ylab("SST Anomaly (1982-2011 baseline)") + 
         xlab("Year") +
@@ -566,168 +570,23 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
               panel.grid.minor = element_blank()) +
         geom_text(aes(x = as.Date("1987-06-15"), y = -2.5, label = my.formula.full), col = "#969696") +
         geom_text(aes(x = as.Date("1997-06-15"), y = -2.5, label = adj.r2.full), col = "#969696") 
-      ggsave("~/Desktop/KM_sstanomaly_BaselineOnly.jpg", width = 8, height = 6, units = "in")
+      ggsave(paste(out.dir, "sstanomaly_BaselineOnly.jpg", sep = ""), width = 8, height = 6, units = "in")
+      dev.off()
       
-      # 2008-2017 trend line
-      sst.anom.lm.plot2<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, YYYY >= 2008 & YYYY <= 2017))
+      # Add a more recent trend line
+      sst.anom.lm.plot2<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, YYYY >= format(as.Date(alt.trend[1]), "%Y") & YYYY <= format(as.Date(alt.trend[2]), "%Y")))
       summary(sst.anom.lm.plot2)
       adj.r2.plot2<- paste("Adj R2 = ", round(summary(sst.anom.lm.plot2)$adj.r.squared, 3), sep = "")
       
       # Fitted model formula
       my.formula.plot2<- paste("Mean.SST = ", signif(round(sst.anom.lm.plot2$coef[[1]], 3), 5), " + ", signif(round(sst.anom.lm.plot2$coef[[2]], 3), 5), "*Year", sep = "")
-      base.ts.form<- base.ts +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("2008-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2017-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "red", size = 0.75, se = FALSE) +
+      base.ts.alttrend<- base.ts +
+        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date(alt.trend[1], format = "%Y-%m-%d") & Plot.Date <= as.Date(alt.trend[2], format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "red", size = 0.75, se = FALSE) +
         geom_text(aes(x = as.Date("1987-06-15"), y = -2.8, label = my.formula.plot2), col = "red") +
         geom_text(aes(x = as.Date("1997-06-15"), y = -2.8, label = adj.r2.plot2), col = "red") 
-      base.ts.form
-      ggsave("~/Desktop/KM_sstanomaly_Baseand07to18.jpg", width = 8, height = 6, units = "in")
-      dev.off()
-      
-      # Add 1982-1993
-      sst.anom.lm.plot3<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, Year >= 1982 & Year <= 1993))
-      summary(sst.anom.lm.plot3)
-      adj.r2.plot3<- paste("Adj R2 = ", round(summary(sst.anom.lm.plot3)$adj.r.squared, 3), sep = "")
-      
-      # Fitted model formula
-      my.formula.plot3<- paste("Mean.SST = ", signif(round(sst.anom.lm.plot3$coef[[1]], 3), 5), " - ", signif(round(abs(sst.anom.lm.plot3$coef[[2]]), 3), 5), "*Year", sep = "")
-      
-      plot3<- base.ts.form +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("1993-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#7570b3", size = 0.75, se = FALSE) +
-        geom_text(aes(x = as.Date("1987-06-15"), y = -4.15, label = my.formula.plot3), col = "#7570b3") +
-        geom_text(aes(x = as.Date("1997-06-15"), y = -4.15, label = adj.r2.plot3), col = "#7570b3") 
-      plot3
-      ggsave("~/Desktop/KM_sstanomaly_Plot3.eps", width = 8, height = 6, units = "in")
-      dev.off()
-      
-      # Add 1993-2004
-      sst.anom.lm.plot4<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, Year >= 1993 & Year <= 2004))
-      summary(sst.anom.lm.plot4)
-      adj.r2.plot4<- paste("Adj R2 = ", round(summary(sst.anom.lm.plot4)$adj.r.squared, 3), sep = "")
-      
-      # Fitted model formula
-      my.formula.plot4<- paste("Mean.SST = ", signif(round(sst.anom.lm.plot4$coef[[1]], 3), 5), " + ", signif(round(sst.anom.lm.plot4$coef[[2]], 3), 5), "*Year", sep = "")
-      
-      plot4<- plot3 +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1993-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2004-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#1b9e77", size = 0.75, se = FALSE) +
-        geom_text(aes(x = as.Date("1987-06-15"), y = -4.45, label = my.formula.plot4), col = "#1b9e77") +
-        geom_text(aes(x = as.Date("1997-06-15"), y = -4.45, label = adj.r2.plot4), col = "#1b9e77") 
-      plot4
-      ggsave("~/Desktop/KM_sstanomaly_Plot4.eps", width = 8, height = 6, units = "in")
-      dev.off() 
-    } else {
-      ylim.use<- c(-3.5,3.5)
-      # Full trend line
-      sst.anom.lm.full<- lm(Mean.SST ~ Year.Model, data = ts.df.yearlymu)
-      summary(sst.anom.lm.full)
-      adj.r2.full<- paste("Adj R2 = ", round(summary(sst.anom.lm.full)$adj.r.squared, 3), sep = "")
-      
-      # Fitted model formula
-      my.formula.full<- paste("Mean.SST = ", signif(round(sst.anom.lm.full$coef[[1]], 3), 5), " + ", signif(round(sst.anom.lm.full$coef[[2]], 3), 5), "*Year", sep = "")
-      base.ts<- ggplot(data = subset(ts.df.dailymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = smoothed)) + 
-        #geom_line(col = "#d9d9d9", lwd = 0.15) +
-        geom_point(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), size = 3, col = "black") +
-        geom_line(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black", lwd = 0.25) +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#969696", size = 0.75, se = FALSE) +
-        ylim(ylim.use) +
-        ylab("SST Anomaly (1982-2011 baseline)") + 
-        xlab("Year") +
-        theme_bw() +
-        theme(axis.text=element_text(size=14),
-              axis.title=element_text(size=16, face="bold"),
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank()) +
-        geom_text(aes(x = as.Date("1987-06-15"), y = -2.25, label = my.formula.full), col = "#969696") +
-        geom_text(aes(x = as.Date("1997-06-15"), y = -2.25, label = adj.r2.full), col = "#969696") 
-      
-      plot(base.ts)
-      ggsave("~/Desktop/KM_sstanomaly_Plot1.eps", width = 8, height = 6, units = "in")
-      
-      # 2004-2015 trend line
-      sst.anom.lm.plot2<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, Year >= 2004 & Year <= 2015))
-      summary(sst.anom.lm.plot2)
-      adj.r2.plot2<- paste("Adj R2 = ", round(summary(sst.anom.lm.plot2)$adj.r.squared, 3), sep = "")
-      
-      # Fitted model formula
-      my.formula.plot2<- paste("Mean.SST = ", signif(round(sst.anom.lm.plot2$coef[[1]], 3), 5), " + ", signif(round(sst.anom.lm.plot2$coef[[2]], 3), 5), "*Year", sep = "")
-      base.ts.form<- base.ts +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("2004-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2015-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#d95f02", size = 0.75, se = FALSE) +
-        geom_text(aes(x = as.Date("1987-06-15"), y = -2.5, label = my.formula.plot2), col = "#d95f02") +
-        geom_text(aes(x = as.Date("1997-06-15"), y = -2.5, label = adj.r2.plot2), col = "#d95f02") 
-      base.ts.form
-      ggsave("~/Desktop/KM_sstanomaly_Plot2.eps", width = 8, height = 6, units = "in")
-      dev.off()
-      
-      # Add 1982-1993
-      sst.anom.lm.plot3<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, Year >= 1982 & Year <= 1993))
-      summary(sst.anom.lm.plot3)
-      adj.r2.plot3<- paste("Adj R2 = ", round(summary(sst.anom.lm.plot3)$adj.r.squared, 3), sep = "")
-      
-      # Fitted model formula
-      my.formula.plot3<- paste("Mean.SST = ", signif(round(sst.anom.lm.plot3$coef[[1]], 3), 5), " - ", signif(round(abs(sst.anom.lm.plot3$coef[[2]]), 3), 5), "*Year", sep = "")
-      
-      plot3<- base.ts.form +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("1993-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#7570b3", size = 0.75, se = FALSE) +
-        geom_text(aes(x = as.Date("1987-06-15"), y = -2.75, label = my.formula.plot3), col = "#7570b3") +
-        geom_text(aes(x = as.Date("1997-06-15"), y = -2.75, label = adj.r2.plot3), col = "#7570b3") 
-      plot3
-      ggsave("~/Desktop/KM_sstanomaly_Plot3.eps", width = 8, height = 6, units = "in")
-      dev.off()
-      
-      # Add 1993-2004
-      sst.anom.lm.plot4<- lm(Mean.SST ~ Year.Model, data = subset(ts.df.yearlymu, Year >= 1993 & Year <= 2004))
-      summary(sst.anom.lm.plot4)
-      adj.r2.plot4<- paste("Adj R2 = ", round(summary(sst.anom.lm.plot4)$adj.r.squared, 3), sep = "")
-      
-      # Fitted model formula
-      my.formula.plot4<- paste("Mean.SST = ", signif(round(sst.anom.lm.plot4$coef[[1]], 3), 5), " + ", signif(round(sst.anom.lm.plot4$coef[[2]], 3), 5), "*Year", sep = "")
-      
-      plot4<- plot3 +
-        geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1993-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2004-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "#1b9e77", size = 0.75, se = FALSE) +
-        geom_text(aes(x = as.Date("1987-06-15"), y = -3, label = my.formula.plot4), col = "#1b9e77") +
-        geom_text(aes(x = as.Date("1997-06-15"), y = -3, label = adj.r2.plot4), col = "#1b9e77") 
-      plot4
-      ggsave("~/Desktop/KM_sstanomaly_Plot4.eps", width = 8, height = 6, units = "in")
+      ggsave(paste(out.dir, "sstanomaly_Baseand", format(as.Date(alt.trend[1]), "%Y"), "to", format(as.Date(alt.trend[2]), "%Y"), ".jpg", sep = ""), width = 8, height = 6, units = "in")
       dev.off()
     }
-    
-    
-    # Other stuff for KM
-    # Yearly means
-    write.csv(ts.df.yearlymu, file = "~/Desktop/SSTAnom_YearlyMeansDegF.csv")
-    
-    full.ts<- ggplot(data = subset(ts.df.dailymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = smoothed)) + 
-      # geom_line(col = "gray", lwd = 0.15) +
-      geom_point(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black") +
-      geom_line(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), col = "black", lwd = 0.25) +
-      geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2016-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, col = "black", size = 0.75, se = FALSE) +
-      #stat_poly_eq(aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), label.x.npc = "left", label.y.npc = 0.9, formula = my.formula, parse = TRUE, size = 3, col = "black") +
-      ylim(c(-1.95, 2.65)) +
-      ylab("SST Anomaly (1982-2011 baseline)") + 
-      xlab("Date") +
-      theme_bw() +
-      theme(axis.text=element_text(size=14),
-            axis.title=element_text(size=16, face="bold")) 
-    plot(full.ts)
-    
-    
-    
-    
-    
-    
-    x<-seq(from = 1982, to = 2015, by = 1)
-    lm(ts.df.yearlymu$Mean.SST[-1] ~ x)
-    
-    cold.plot<- full.ts +
-      geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("1992-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, color = "blue", se = FALSE, size = 1.25) +
-      stat_poly_eq(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("1982-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("1992-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST, label = paste(..eq.label.., ..rr.label.., sep = "~~~")), label.x.npc = "left", label.y.npc = 0.01, formula = y ~ x, parse = TRUE, size = 3, color = "blue") +
-      ylim(c(-1.95, 2.65)) 
-    plot(cold.plot)
-    
-    warming.plot<- full.ts +
-      geom_smooth(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("2004-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2014-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST), method = "lm", formula = y ~ x, color = "red", se = FALSE, size = 1.25) +
-      stat_poly_eq(data = subset(ts.df.yearlymu, Plot.Date >= as.Date("2004-01-01", format = "%Y-%m-%d") & Plot.Date <= as.Date("2014-12-31", format = "%Y-%m-%d")), aes(x = Plot.Date, y = Mean.SST, label = paste(..eq.label.., ..rr.label.., sep = "~~~")), label.x.npc = "right", label.y.npc = 0.01, formula = y ~ x, parse = TRUE, size = 3, color = "red") +
-      ylim(c(-1.95, 2.65)) 
-    plot(warming.plot)
   }
   # End function
 }
