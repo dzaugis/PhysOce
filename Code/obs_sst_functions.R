@@ -419,14 +419,14 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
   
   ## Start function
   # Install libraries
-  library_check(c("tidyverse", "sf", "zoo", "forecast"))
+  library_check(c("tidyverse", "sf", "zoo", "forecast", "raster"))
   
   # Set arguments for debugging -- this will NOT run when you call the function. Though, you can run each line inside the {} and then you will have everything you need to walk through the rest of the function.
   if(FALSE){
     oisst.stack = "~/Dropbox/Andrew/Work/GMRI/Projects/AllData/OISST.grd"
     baseline = c("1982-01-01", "2011-01-01")
     alt.trend = c("2004-01-01", "2018-12-31")
-    regions = c("NELME")
+    regions = c("NELME", "GoM", "SNE-MAB")
     out.dir<- "~/Dropbox/Andrew/Work/GMRI/Projects/AllData/"
   }
   
@@ -437,22 +437,22 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
   
   # Extracting temperatures for different regions, saving files and plotting time series
   for(i in seq_along(regions)){
+    # Focus on only region of interest
     mask.use<- switch(regions[i],
-                      "NELME" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/NELME.shp"),
-                      "GoM" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/GoM.shp"),
-                      "SNE-MAB" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/SNEandMAB.shp"))
+                      "NELME" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/NELME_sf.shp"),
+                      "GoM" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/GoM_sf.shp"),
+                      "SNE-MAB" = st_read("/Volumes/Shared/Research/Mills Lab/SST/Shapefiles/SNEandMAB_sf.shp"))
+    oisst.m<- mask(oisst.rts, mask.use)
     
     # Need to get climatology from the OISST data 
-    oisst.m<- oisst.rts
-    
     # Baseline
     oisst.m.base<- oisst.m[[which(getZ(oisst.m) >= baseline[1] & getZ(oisst.m) <= baseline[2])]]
     oisst.m.base<- setZ(oisst.m.base, seq.Date(from = as.Date(baseline[1]), to = as.Date(baseline[2]), by = "day"))
     
     dates.unique<- unique(format(as.Date(getZ(oisst.m)), "%m-%d"))
-    daily.means<- stack(lapply(seq(length(dates.unique)), function(x) calc(oisst.m.base[[which(format(getZ(oisst.m.base), "%m-%d") == dates.unique[x])]], fun = mean)))
+    daily.means<- stack(lapply(seq(length(dates.unique)), function(x) calc(oisst.m.base[[which(format(getZ(oisst.m.base), "%m-%d") == dates.unique[x])]], fun = mean, na.rm = TRUE)))
     names(daily.means)<- dates.unique
-    daily.sd<- stack(lapply(seq(length(dates.unique)), function(x) calc(oisst.m.base[[which(format(getZ(oisst.m.base), "%m-%d") == dates.unique[x])]], fun = sd)))
+    daily.sd<- stack(lapply(seq(length(dates.unique)), function(x) calc(oisst.m.base[[which(format(getZ(oisst.m.base), "%m-%d") == dates.unique[x])]], fun = sd, na.rm = TRUE)))
     names(daily.sd)<- dates.unique
     
     # Daily temps for KM
@@ -587,6 +587,7 @@ env_data_timeseries<- function(oisst.stack, baseline = c("1982-01-01", "2011-01-
       ggsave(paste(out.dir, "sstanomaly_Baseand", format(as.Date(alt.trend[1]), "%Y"), "to", format(as.Date(alt.trend[2]), "%Y"), ".jpg", sep = ""), width = 8, height = 6, units = "in")
       dev.off()
     }
+    print(paste(regions[i], " is done!", sep = ""))
   }
   # End function
 }
